@@ -73,18 +73,26 @@ class BigramLanguageModel(nn.Module):
         super().__init__()
         # each token directly reads off the logits for the next token from a lookup table
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
+        #positional emebdinng Notice how the second dimension is the same as the token embedding dimension
+        self.position_embedding_table = nn.Embedding(block_size, n_embd)
+
         #this is now new linear layer that will apply soon after the token emmbeddings.
         self.lm_head = nn.Linear(n_embd, vocab_size)
 
     def forward(self, idx, targets=None):
+        B,T = idx.shape
 
         # idx and targets are both (B,T) tensor of integers
         #this won't be called logits anymore since we are increasing the complexity.
         #instead these will just be the token embeddings.
-        token_emb = self.token_embedding_table(idx) # (B,T,C)
+        tok_emb = self.token_embedding_table(idx) # (B,T,C)
+        #this will right now just create the same block_size by n_embd tensor. It just indexes the position embedding table with 0-7 indices, and it will just
+        #pluck out the entire position embedding table
+        pos_emb = self.position_embedding_table(torch.arange(T, device=device))
+        x = tok_emb + pos_emb
         #the below linear layer is basically a matrix multiplaction
         #the (4,8,32) @ (32,65) produces a tensor of (4,8,65)
-        logits = self.lm_head(token_emb) # (B,T,Vocab_Size)
+        logits = self.lm_head(x) # (B,T,Vocab_Size)
 
         if targets is None:
             loss = None
