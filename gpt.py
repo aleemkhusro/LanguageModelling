@@ -89,6 +89,59 @@ class Head(nn.Module):
         out = wei @ v #wei: B,T,T and v: B,T,head_size -> B,T,head_size
         return out
 
+class MultiHeadAttention(nn.Module):
+    def __init__(self, num_heads, head_size):
+        super().__init__()
+        self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
+
+    def forward(self, x):
+        #the shape of the output of each attention head is B,T,head_seize. So concating along the last dim -1 means that the new shape will be like
+        # B,T,head_size*num_heads
+        """
+        It's quite like this example below
+        a = torch.randint(1,10, (2,3,4))
+        a
+        Out[3]:
+        tensor([[[8, 8, 3, 9],
+                 [5, 6, 4, 1],
+                 [1, 1, 8, 4]],
+                [[9, 2, 1, 4],
+                 [3, 4, 1, 4],
+                 [4, 8, 6, 6]]])
+        b = torch.randint(1,10, (2,3,4))
+        b
+        Out[4]:
+        tensor([[[5, 6, 4, 3],
+                 [2, 6, 6, 3],
+                 [9, 2, 3, 1]],
+                [[7, 8, 2, 1],
+                 [8, 6, 9, 5],
+                 [4, 4, 8, 1]]])
+        torch.cat([a,b], dim=-1) #THIS ONE IS WHAT WE ARE DOING
+        Out[5]:
+        tensor([[[8, 8, 3, 9, 5, 6, 4, 3],
+                 [5, 6, 4, 1, 2, 6, 6, 3],
+                 [1, 1, 8, 4, 9, 2, 3, 1]],
+                [[9, 2, 1, 4, 7, 8, 2, 1],
+                 [3, 4, 1, 4, 8, 6, 9, 5],
+                 [4, 8, 6, 6, 4, 4, 8, 1]]])
+        torch.cat([a,b], dim=1)
+        Out[6]:
+        tensor([[[8, 8, 3, 9],
+                 [5, 6, 4, 1],
+                 [1, 1, 8, 4],
+                 [5, 6, 4, 3],
+                 [2, 6, 6, 3],
+                 [9, 2, 3, 1]],
+                [[9, 2, 1, 4],
+                 [3, 4, 1, 4],
+                 [4, 8, 6, 6],
+                 [7, 8, 2, 1],
+                 [8, 6, 9, 5],
+                 [4, 4, 8, 1]]])
+        """
+        out = torch.cat([h(x) for h in self.heads], dim=-1)
+        return out
 
 class BigramLanguageModel(nn.Module):
     #we are going to modify this to incldue the attention head
@@ -101,7 +154,8 @@ class BigramLanguageModel(nn.Module):
         #for the positional encoding we just index it with arange tensor, and uptill the context we have and less than block size always during forward and inference.
         #see below for more details on positional embedding.
         self.position_embedding_table = nn.Embedding(block_size, n_embd)
-        self.sa_head = Head(n_embd) #for now the head_size will be just as n_embd
+        #we have also added multi ateention head now, and the head_size is now 32//4 = 8 dimensional.
+        self.sa_heads = MultiHeadAttention(4, n_embd//4)
 
         #this is now new linear layer that will apply soon after the token emmbeddings.
         self.lm_head = nn.Linear(n_embd, vocab_size)
@@ -117,7 +171,7 @@ class BigramLanguageModel(nn.Module):
         #pluck out the entire position embedding table, or uptill T if we are doing inference with incremental context size.
         pos_emb = self.position_embedding_table(torch.arange(T, device=device))
         x = tok_emb + pos_emb #B,T,C
-        x = self.sa_head(x) #apply one head of self attention B,T,C
+        x = self.sa_heads(x) #apply one head of self attention B,T,C
 
         #the below linear layer is basically a matrix multiplaction
         #the (4,8,32) @ (32,65) produces a tensor of (4,8,65)
