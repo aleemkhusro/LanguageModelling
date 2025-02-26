@@ -142,6 +142,16 @@ class MultiHeadAttention(nn.Module):
         """
         out = torch.cat([h(x) for h in self.heads], dim=-1)
         return out
+class FeedForward(nn.Module):
+    def __init__(self, n_embd):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(n_embd,n_embd),
+            nn.ReLU()
+        )
+    def forward(self, x):
+        return self.net(x)
+
 
 class BigramLanguageModel(nn.Module):
     #we are going to modify this to incldue the attention head
@@ -155,7 +165,8 @@ class BigramLanguageModel(nn.Module):
         #see below for more details on positional embedding.
         self.position_embedding_table = nn.Embedding(block_size, n_embd)
         #we have also added multi ateention head now, and the head_size is now 32//4 = 8 dimensional.
-        self.sa_heads = MultiHeadAttention(4, n_embd//4)
+        self.sa_heads = MultiHeadAttention(4, n_embd//4) #this gives an output of 32 dim in the dimension because of the concat
+        self.ffwd = FeedForward(n_embd)
 
         #this is now new linear layer that will apply soon after the token emmbeddings.
         self.lm_head = nn.Linear(n_embd, vocab_size)
@@ -171,7 +182,9 @@ class BigramLanguageModel(nn.Module):
         #pluck out the entire position embedding table, or uptill T if we are doing inference with incremental context size.
         pos_emb = self.position_embedding_table(torch.arange(T, device=device))
         x = tok_emb + pos_emb #B,T,C
-        x = self.sa_heads(x) #apply one head of self attention B,T,C
+        x = self.sa_heads(x) #apply multiple head of self attention B,T,C here C is 32 dimensional
+        x = self.ffwd(x)  #B,T,C this feedforward is token by token, like each token is just gonna go to the linear layer and get multiplied
+
 
         #the below linear layer is basically a matrix multiplaction
         #the (4,8,32) @ (32,65) produces a tensor of (4,8,65)
