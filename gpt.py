@@ -152,6 +152,21 @@ class FeedForward(nn.Module):
     def forward(self, x):
         return self.net(x)
 
+class Block(nn.Module):
+    def __init__(self, n_embd, n_head ):
+        super().__init__()
+        head_size = n_embd // n_head
+        self.sa_heads = MultiHeadAttention(n_head, head_size)
+        self.ffwd = FeedForward(n_embd)
+
+    def forward(self, x):
+        x = self.sa_heads(x)
+        x = self.ffwd(x)
+        return x
+
+
+
+
 
 class BigramLanguageModel(nn.Module):
     #we are going to modify this to incldue the attention head
@@ -164,9 +179,11 @@ class BigramLanguageModel(nn.Module):
         #for the positional encoding we just index it with arange tensor, and uptill the context we have and less than block size always during forward and inference.
         #see below for more details on positional embedding.
         self.position_embedding_table = nn.Embedding(block_size, n_embd)
-        #we have also added multi ateention head now, and the head_size is now 32//4 = 8 dimensional.
-        self.sa_heads = MultiHeadAttention(4, n_embd//4) #this gives an output of 32 dim in the dimension because of the concat
-        self.ffwd = FeedForward(n_embd)
+        self.blocks = nn.Sequential(
+            Block(n_embd, 4),
+            Block(n_embd, 4),
+            Block(n_embd, 4),
+        )
 
         #this is now new linear layer that will apply soon after the token emmbeddings.
         self.lm_head = nn.Linear(n_embd, vocab_size)
@@ -182,9 +199,7 @@ class BigramLanguageModel(nn.Module):
         #pluck out the entire position embedding table, or uptill T if we are doing inference with incremental context size.
         pos_emb = self.position_embedding_table(torch.arange(T, device=device))
         x = tok_emb + pos_emb #B,T,C
-        x = self.sa_heads(x) #apply multiple head of self attention B,T,C here C is 32 dimensional
-        x = self.ffwd(x)  #B,T,C this feedforward is token by token, like each token is just gonna go to the linear layer and get multiplied
-
+        x = self.blocks(x)
 
         #the below linear layer is basically a matrix multiplaction
         #the (4,8,32) @ (32,65) produces a tensor of (4,8,65)
