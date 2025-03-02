@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 #hyperparameters
-batch_size = 32
+batch_size = 16
 block_size = 8
 max_iters = 5000
 eval_interval = 500
@@ -155,12 +155,18 @@ class FeedForward(nn.Module):
 class Block(nn.Module):
     def __init__(self, n_embd, n_head ):
         super().__init__()
+        #the head_size is 32//4 = 8 dimensional.
         head_size = n_embd // n_head
         self.sa_heads = MultiHeadAttention(n_head, head_size)
         self.ffwd = FeedForward(n_embd)
 
     def forward(self, x):
+        #x: input is B,T,C (B,8,32)
+        # apply multiple head of self attention, the output is of size B,T,C here C is 32 dimensional. Because
+        # 4* 8, or "num_heads*head_size" is equal to 32. Remember that the each attention heads output was concatenated
         x = self.sa_heads(x)
+        # output is B,T,C this feedforward is token by token, like each token is just gonna go to the linear layer and get multiplied
+        #the linear layer has output neurons of size n_embd, so naturally C is also n_embd.
         x = self.ffwd(x)
         return x
 
@@ -198,11 +204,11 @@ class BigramLanguageModel(nn.Module):
         #this will right now just create the same block_size by n_embd tensor. It just indexes the position embedding table with 0-7 indices, and it will just
         #pluck out the entire position embedding table, or uptill T if we are doing inference with incremental context size.
         pos_emb = self.position_embedding_table(torch.arange(T, device=device))
-        x = tok_emb + pos_emb #B,T,C
+        x = tok_emb + pos_emb # (B,T,C) + (T,C) -> B,T,C
         x = self.blocks(x)
 
         #the below linear layer is basically a matrix multiplaction
-        #the (4,8,32) @ (32,65) produces a tensor of (4,8,65)
+        #the (B,8,32) @ (32,65) produces a tensor of (B,8,65)
         logits = self.lm_head(x) # (B,T,Vocab_Size)
 
         if targets is None:
@@ -242,7 +248,7 @@ model = BigramLanguageModel()
 m = model.to(device)
 optimizer = torch.optim.AdamW(model.parameters(), lr = 1e-03)
 for iter in range(max_iters):
-    if iter % eval_interval == 0:
+    if iter % eval_interval == 0 and iter > 0:
         losses = estimate_loss()
         print(f"step {iter}: train loss: {losses['train']:.4f}, val loss: {losses['val']:.4f}")
     xb,yb = get_batch('train')
