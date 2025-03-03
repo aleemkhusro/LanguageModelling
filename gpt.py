@@ -11,6 +11,7 @@ learning_rate = 1e-3 #decrease the learning because self attention cant tolerate
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 eval_iters = 200
 n_embd = 32
+dropout = 0.2
 #-------
 
 torch.manual_seed(1337)
@@ -73,6 +74,7 @@ class Head(nn.Module):
         self.key = nn.Linear(n_embd, head_size, bias=False)
         self.query = nn.Linear(n_embd, head_size, bias = False)
         self.value = nn.Linear(n_embd, head_size, bias = False)
+        self.dropout = nn.Dropout(dropout)
         self.register_buffer('tril', torch.tril(torch.ones(block_size,block_size)))
 
     def forward(self, x):
@@ -85,6 +87,7 @@ class Head(nn.Module):
         wei = q @ k.transpose(-1,-2) * C**-0.5 # (B,T,C) @ (B,C,T) -> (B,T,T) these will be the attention affinities
         wei = wei.masked_fill(self.tril[:T, :T]==0, float('-inf'))
         wei = F.softmax(wei, dim=-1) #B,T,T #the softmax will give the attention score
+        wei = self.dropout(wei)
         # perform weighted aggregation
         out = wei @ v #wei: B,T,T and v: B,T,head_size -> B,T,head_size
         return out
@@ -93,6 +96,7 @@ class MultiHeadAttention(nn.Module):
     def __init__(self, num_heads, head_size):
         super().__init__()
         self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
+        self.dropout = nn.Dropout(dropout)
         #this linear projecttion is added to make sure that the concatenation of outputs of multi attention are compatible with the dmodel. 
         self.proj = nn.Linear(n_embd, n_embd)
 
@@ -100,7 +104,7 @@ class MultiHeadAttention(nn.Module):
         #the shape of the output of each attention head is B,T,head_seize. So concating along the last dim -1 means that the new shape will be like
         # B,T,head_size*num_heads
         out = torch.cat([h(x) for h in self.heads], dim=-1)
-        out = self.proj(out)
+        out = self.dropout(self.proj(out))
         return out
 class FeedForward(nn.Module):
     def __init__(self, n_embd):
@@ -108,7 +112,8 @@ class FeedForward(nn.Module):
         self.net = nn.Sequential(
             nn.Linear(n_embd,4 * n_embd),
             nn.ReLU(),
-            nn.Linear(4 * n_embd,n_embd)
+            nn.Linear(4 * n_embd,n_embd),
+            nn.Dropout(dropout)
         )
     def forward(self, x):
         return self.net(x)
