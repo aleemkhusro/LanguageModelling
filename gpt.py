@@ -93,61 +93,22 @@ class MultiHeadAttention(nn.Module):
     def __init__(self, num_heads, head_size):
         super().__init__()
         self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
+        #this linear projecttion is added to make sure that the concatenation of outputs of multi attention are compatible with the dmodel. 
+        self.proj = nn.Linear(n_embd, n_embd)
 
     def forward(self, x):
         #the shape of the output of each attention head is B,T,head_seize. So concating along the last dim -1 means that the new shape will be like
         # B,T,head_size*num_heads
-        """
-        It's quite like this example below
-        a = torch.randint(1,10, (2,3,4))
-        a
-        Out[3]:
-        tensor([[[8, 8, 3, 9],
-                 [5, 6, 4, 1],
-                 [1, 1, 8, 4]],
-                [[9, 2, 1, 4],
-                 [3, 4, 1, 4],
-                 [4, 8, 6, 6]]])
-        b = torch.randint(1,10, (2,3,4))
-        b
-        Out[4]:
-        tensor([[[5, 6, 4, 3],
-                 [2, 6, 6, 3],
-                 [9, 2, 3, 1]],
-                [[7, 8, 2, 1],
-                 [8, 6, 9, 5],
-                 [4, 4, 8, 1]]])
-        torch.cat([a,b], dim=-1) #THIS ONE IS WHAT WE ARE DOING
-        Out[5]:
-        tensor([[[8, 8, 3, 9, 5, 6, 4, 3],
-                 [5, 6, 4, 1, 2, 6, 6, 3],
-                 [1, 1, 8, 4, 9, 2, 3, 1]],
-                [[9, 2, 1, 4, 7, 8, 2, 1],
-                 [3, 4, 1, 4, 8, 6, 9, 5],
-                 [4, 8, 6, 6, 4, 4, 8, 1]]])
-        torch.cat([a,b], dim=1)
-        Out[6]:
-        tensor([[[8, 8, 3, 9],
-                 [5, 6, 4, 1],
-                 [1, 1, 8, 4],
-                 [5, 6, 4, 3],
-                 [2, 6, 6, 3],
-                 [9, 2, 3, 1]],
-                [[9, 2, 1, 4],
-                 [3, 4, 1, 4],
-                 [4, 8, 6, 6],
-                 [7, 8, 2, 1],
-                 [8, 6, 9, 5],
-                 [4, 4, 8, 1]]])
-        """
         out = torch.cat([h(x) for h in self.heads], dim=-1)
+        out = self.proj(out)
         return out
 class FeedForward(nn.Module):
     def __init__(self, n_embd):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(n_embd,n_embd),
-            nn.ReLU()
+            nn.Linear(n_embd,4 * n_embd),
+            nn.ReLU(),
+            nn.Linear(4 * n_embd,n_embd)
         )
     def forward(self, x):
         return self.net(x)
