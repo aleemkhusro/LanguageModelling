@@ -162,12 +162,12 @@ class Block(nn.Module):
 
     def forward(self, x):
         #x: input is B,T,C (B,8,32)
-        # apply multiple head of self attention, the output is of size B,T,C here C is 32 dimensional. Because
+        # apply multiple head of self attention with residual connection, the output is of size B,T,C here C is 32 dimensional. Because
         # 4* 8, or "num_heads*head_size" is equal to 32. Remember that the each attention heads output was concatenated
-        x = self.sa_heads(x)
+        x = x + self.sa_heads(x)
         # output is B,T,C this feedforward is token by token, like each token is just gonna go to the linear layer and get multiplied
         #the linear layer has output neurons of size n_embd, so naturally C is also n_embd.
-        x = self.ffwd(x)
+        x = x + self.ffwd(x)
         return x
 
 
