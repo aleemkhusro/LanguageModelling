@@ -120,15 +120,17 @@ class Block(nn.Module):
         head_size = n_embd // n_head
         self.sa_heads = MultiHeadAttention(n_head, head_size)
         self.ffwd = FeedForward(n_embd)
+        self.ln1 = nn.LayerNorm(n_embd)
+        self.ln2 = nn.LayerNorm(n_embd)
 
     def forward(self, x):
         #x: input is B,T,C (B,8,32)
         # apply multiple head of self attention with residual connection, the output is of size B,T,C here C is 32 dimensional. Because
         # 4* 8, or "num_heads*head_size" is equal to 32. Remember that the each attention heads output was concatenated
-        x = x + self.sa_heads(x)
+        x = x + self.sa_heads(self.ln1(x))
         # output is B,T,C this feedforward is token by token, like each token is just gonna go to the linear layer and get multiplied
         #the linear layer has output neurons of size n_embd, so naturally C is also n_embd.
-        x = x + self.ffwd(x)
+        x = x + self.ffwd(self.ln2(x))
         return x
 
 
@@ -150,6 +152,7 @@ class BigramLanguageModel(nn.Module):
             Block(n_embd, 4),
             Block(n_embd, 4),
             Block(n_embd, 4),
+            nn.LayerNorm(n_embd)
         )
 
         #this is now new linear layer that will apply soon after the token emmbeddings.
