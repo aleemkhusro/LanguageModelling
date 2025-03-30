@@ -5,7 +5,7 @@ from torch.nn import functional as F
 #hyperparameters
 batch_size = 16
 block_size = 8
-max_iters = 5000
+max_iters = 100
 eval_interval = 500
 learning_rate = 1e-3 #decrease the learning because self attention cant tolerate very high learning rate
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -142,7 +142,7 @@ class Block(nn.Module):
 
 
 
-class BigramLanguageModel(nn.Module):
+class CharLanguageModel(nn.Module):
     #we are going to modify this to incldue the attention head
     def __init__(self):
         #no need to pass the vocab size arouond as it is already defined uptop
@@ -160,15 +160,13 @@ class BigramLanguageModel(nn.Module):
             nn.LayerNorm(n_embd)
         )
 
-        #this is now new linear layer that will apply soon after the token emmbeddings.
+        #this is the final layer that will generate the logits.
         self.lm_head = nn.Linear(n_embd, vocab_size)
 
     def forward(self, idx, targets=None):
         B,T = idx.shape
 
         # idx and targets are both (B,T) tensor of integers
-        #this won't be called logits anymore since we are increasing the complexity.
-        #instead these will just be the token embeddings.
         tok_emb = self.token_embedding_table(idx) # (B,T,C)
         #this will right now just create the same block_size by n_embd tensor. It just indexes the position embedding table with 0-7 indices, and it will just
         #pluck out the entire position embedding table, or uptill T if we are doing inference with incremental context size.
@@ -212,7 +210,7 @@ class BigramLanguageModel(nn.Module):
             idx = torch.cat((idx, idx_next), dim=1) # (B, T+1)
         return idx
 
-model = BigramLanguageModel()
+model = CharLanguageModel()
 #model and m will refer to the same location in memory
 m = model.to(device)
 optimizer = torch.optim.AdamW(model.parameters(), lr = 1e-03)
