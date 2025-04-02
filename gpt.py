@@ -3,14 +3,16 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 #hyperparameters
-batch_size = 16
-block_size = 8
-max_iters = 100
+batch_size = 64
+block_size = 256
+max_iters = 5000
 eval_interval = 500
-learning_rate = 1e-3 #decrease the learning because self attention cant tolerate very high learning rate
+learning_rate = 3e-4 #decrease the learning because self attention cant tolerate very high learning rate
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 eval_iters = 200
-n_embd = 32
+n_embd = 384
+n_head =6
+n_layer =6
 dropout = 0.2
 #-------
 
@@ -78,18 +80,20 @@ class Head(nn.Module):
         self.register_buffer('tril', torch.tril(torch.ones(block_size,block_size)))
 
     def forward(self, x):
+        # input of size (batch, time-step, channels)
+        # output of size (batch, time-step, head size (hs))
         B,T,C = x.shape
-        k = self.key(x) #shape of B,T,head_size # head_size is also referred to as the channel dimension in the comments below
-        q = self.query(x) #shape of B,T,head_size
-        v = self.value(x) #shape of B,T,head_size
+        k = self.key(x) #shape of B,T,hs
+        q = self.query(x) #shape of B,T,hs
+        v = self.value(x) #shape of B,T,hs
 
         #compute attention scores
-        wei = q @ k.transpose(-1,-2) * C**-0.5 # (B,T,C) @ (B,C,T) -> (B,T,T) these will be the attention affinities
+        wei = q @ k.transpose(-1,-2) * k.shape[-1]**-0.5 # (B,T,hs) @ (B,hs,T) -> (B,T,T) these will be the attention affinities. k.shape[-1] is head_size
         wei = wei.masked_fill(self.tril[:T, :T]==0, float('-inf'))
         wei = F.softmax(wei, dim=-1) #B,T,T #the softmax will give the attention score
         wei = self.dropout(wei)
         # perform weighted aggregation
-        out = wei @ v #wei: B,T,T and v: B,T,head_size -> B,T,head_size
+        out = wei @ v #wei: B,T,T and v: B,T,hs -> B,T,hs
         return out
 
 class MultiHeadAttention(nn.Module):
@@ -97,8 +101,8 @@ class MultiHeadAttention(nn.Module):
         super().__init__()
         self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
         self.dropout = nn.Dropout(dropout)
-        #this linear projecttion is added to make sure that the concatenation of outputs of multi attention are compatible with the dmodel. 
-        self.proj = nn.Linear(n_embd, n_embd)
+        #this linear projecttion is needed to remix the concactenated outputs in a trainable way. 
+        self.proj = nn.Linear(num_heads*head_size, n_embd)
 
     def forward(self, x):
         #the shape of the output of each attention head is B,T,head_seize. So concating along the last dim -1 means that the new shape will be like
@@ -153,12 +157,8 @@ class CharLanguageModel(nn.Module):
         #for the positional encoding we just index it with arange tensor, and uptill the context we have and less than block size always during forward and inference.
         #see below for more details on positional embedding.
         self.position_embedding_table = nn.Embedding(block_size, n_embd)
-        self.blocks = nn.Sequential(
-            Block(n_embd, 4),
-            Block(n_embd, 4),
-            Block(n_embd, 4),
-            nn.LayerNorm(n_embd)
-        )
+        self.blocks = nn.Sequential(*[Block(n_embd, n_head=n_head) for _ in range(n_layer)])
+        self.ln_f = nn.LayerNorm(n_embd)
 
         #this is the final layer that will generate the logits.
         self.lm_head = nn.Linear(n_embd, vocab_size)
@@ -213,7 +213,7 @@ class CharLanguageModel(nn.Module):
 model = CharLanguageModel()
 #model and m will refer to the same location in memory
 m = model.to(device)
-optimizer = torch.optim.AdamW(model.parameters(), lr = 1e-03)
+optimizer = torch.optim.AdamW(model.parameters(), lr = learning_rate)
 for iter in range(max_iters):
     if iter % eval_interval == 0 and iter > 0:
         losses = estimate_loss()
